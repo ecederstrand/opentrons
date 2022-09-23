@@ -982,6 +982,8 @@ class OT3API(
         """Move the gripper jaw inward to close."""
         try:
             await self._backend.gripper_move_jaw(duty_cycle=duty_cycle)
+            encoder_pos = await self._backend.update_encoder_position()
+            self._encoder_current_position.update(encoder_pos)
         except Exception:
             self._log.exception("Gripper grip failed")
             raise
@@ -991,6 +993,8 @@ class OT3API(
         """Move the gripper jaw outward to reach the homing switch."""
         try:
             await self._backend.gripper_home_jaw()
+            encoder_pos = await self._backend.update_encoder_position()
+            self._encoder_current_position.update(encoder_pos)
         except Exception:
             self._log.exception("Gripper home failed")
             raise
