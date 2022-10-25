@@ -287,10 +287,16 @@ def test_open_lid(
     decoy.verify(
         mock_sync_hardware_api.retract(Mount.RIGHT),
         mock_instrument_core.move_to(
-            Location(Point(x=1, y=2, z=4), None),
+            point=Point(x=1, y=2, z=4),
+            well_core=None,
+            labware_core=None,
             force_direct=True,
             minimum_z_height=None,
             speed=None,
+        ),
+        mock_protocol_core.set_last_location(
+            location=Location(point=Point(x=1, y=2, z=4), labware=None),
+            mount=Mount.RIGHT,
         ),
         decoy.prop(mock_geometry.lid_status).set(ThermocyclerLidStatus.OPEN),
     )
@@ -329,10 +335,16 @@ def test_close_lid(
     decoy.verify(
         mock_sync_hardware_api.retract(Mount.LEFT),
         mock_instrument_core.move_to(
-            Location(Point(x=1, y=2, z=4), None),
+            point=Point(x=1, y=2, z=4),
+            well_core=None,
+            labware_core=None,
             force_direct=True,
             minimum_z_height=None,
             speed=None,
+        ),
+        mock_protocol_core.set_last_location(
+            location=Location(point=Point(x=1, y=2, z=4), labware=None),
+            mount=Mount.LEFT,
         ),
         decoy.prop(mock_geometry.lid_status).set(ThermocyclerLidStatus.CLOSED),
     )

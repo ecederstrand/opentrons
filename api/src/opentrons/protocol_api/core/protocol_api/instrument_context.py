@@ -7,7 +7,6 @@ from opentrons.protocols.api_support.types import APIVersion
 from opentrons.hardware_control import CriticalPoint
 from opentrons.hardware_control.dev_types import PipetteDict
 from opentrons.protocols.api_support.definitions import MAX_SUPPORTED_VERSION
-from opentrons.protocols.api_support.labware_like import LabwareLike
 from opentrons.protocols.api_support.util import (
     Clearances,
     build_edges,
@@ -17,13 +16,16 @@ from opentrons.protocols.api_support.util import (
 from opentrons.protocols.geometry import planning
 
 from ..instrument import AbstractInstrument
+from .labware import LabwareImplementation
 from .well import WellImplementation
 
 if TYPE_CHECKING:
     from .protocol_context import ProtocolContextImplementation
 
 
-class InstrumentContextImplementation(AbstractInstrument[WellImplementation]):
+class InstrumentContextImplementation(
+    AbstractInstrument[LabwareImplementation, WellImplementation]
+):
     """Implementation of the InstrumentContext interface."""
 
     _api_version: APIVersion
@@ -92,7 +94,7 @@ class InstrumentContextImplementation(AbstractInstrument[WellImplementation]):
         from opentrons.protocol_api.labware import Well
 
         edges = build_edges(
-            where=Well(well_implementation=location),
+            where=Well(core=location),
             offset=v_offset,
             mount=self._mount,
             deck=self._protocol_interface.get_deck(),
@@ -141,7 +143,9 @@ class InstrumentContextImplementation(AbstractInstrument[WellImplementation]):
 
     def move_to(
         self,
-        location: types.Location,
+        point: types.Point,
+        well_core: Optional[WellImplementation],
+        labware_core: Optional[LabwareImplementation],
         force_direct: bool,
         minimum_z_height: Optional[float],
         speed: Optional[float],
@@ -156,29 +160,63 @@ class InstrumentContextImplementation(AbstractInstrument[WellImplementation]):
             mount=location_cache_mount
         )
 
-        if last_location:
-            from_lw = last_location.labware
-        else:
-            from_lw = LabwareLike(None)
+        from_slot = None
+        from_well_highest_z = None
+        from_labware_highest_z = None
+        from_critical_point = None
+        to_slot = None
+        to_well_highest_z = None
+        to_labware_highest_z = None
+        to_critical_point = None
+        same_labware = False
+        same_well = False
 
-        if not speed:
-            speed = self.get_default_speed()
+        if labware_core:
+            to_slot = labware_core.get_slot()
+            to_labware_highest_z = labware_core.highest_z
+            if labware_core.get_center_multichannel_on_wells():
+                to_critical_point = CriticalPoint.XY_CENTER
+
+        if well_core:
+            to_well_highest_z = well_core.get_geometry().top().z
+
+        if last_location:
+            from_lw, from_well = last_location.labware.get_parent_labware_and_well()
+            from_slot = last_location.labware.first_parent()
+
+            if last_location.labware.center_multichannel_on_wells():
+                from_critical_point = CriticalPoint.XY_CENTER
+
+            if from_well:
+                same_well = from_well._core is well_core
+                from_well_highest_z = from_well.top().point.z
+
+            if from_lw:
+                same_labware = from_lw._core is labware_core
+                from_labware_highest_z = from_lw.highest_z
 
         hardware = self._protocol_interface.get_hardware()
-
-        from_center = from_lw.center_multichannel_on_wells() if from_lw else False
-        cp_override = CriticalPoint.XY_CENTER if from_center else None
-
-        from_loc = types.Location(
-            hardware.gantry_position(self._mount, critical_point=cp_override), from_lw
+        from_point = hardware.gantry_position(
+            self._mount, critical_point=from_critical_point
         )
-
         instr_max_height = hardware.get_instrument_max_height(self._mount)
+        speed = speed or self.get_default_speed()
+
         moves = planning.plan_moves(
-            from_loc,
-            location,
-            self._protocol_interface.get_deck(),
-            instr_max_height,
+            from_point=from_point,
+            from_slot=from_slot,
+            from_well_highest_z=from_well_highest_z,
+            from_labware_highest_z=from_labware_highest_z,
+            from_critical_point=from_critical_point,
+            to_point=point,
+            to_slot=to_slot,
+            to_labware_highest_z=to_labware_highest_z,
+            to_well_highest_z=to_well_highest_z,
+            to_critical_point=to_critical_point,
+            same_labware=same_labware,
+            same_well=same_well,
+            deck=self._protocol_interface.get_deck(),
+            instr_max_height=instr_max_height,
             force_direct=force_direct,
             minimum_z_height=minimum_z_height,
         )
@@ -195,10 +233,6 @@ class InstrumentContextImplementation(AbstractInstrument[WellImplementation]):
         except Exception:
             self._protocol_interface.set_last_location(None)
             raise
-        else:
-            self._protocol_interface.set_last_location(
-                location=location, mount=location_cache_mount
-            )
 
     def get_mount(self) -> types.Mount:
         """Get the mount this pipette is attached to."""

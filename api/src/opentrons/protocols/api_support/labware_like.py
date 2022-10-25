@@ -116,7 +116,7 @@ class LabwareLike:
 
     def get_parent_labware_and_well(
         self,
-    ) -> Tuple[Optional["Labware"], Optional["Well"]]:
+    ) -> Union[Tuple[None, None], Tuple["Labware", None], Tuple["Labware", "Well"]]:
         """Attempt to split into a labware and well."""
         if self.is_labware:
             return self.as_labware(), None

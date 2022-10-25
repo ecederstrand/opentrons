@@ -15,7 +15,6 @@ from opentrons.motion_planning import (
     get_waypoints,
 )
 
-from opentrons.protocols.api_support.labware_like import LabwareLike
 from opentrons.protocols.geometry.deck import Deck
 from opentrons.protocols.geometry.module_geometry import (
     ModuleGeometry,
@@ -52,7 +51,9 @@ BAD_PAIRS = {
 
 
 def should_dodge_thermocycler(
-    deck: Deck, from_loc: types.Location, to_loc: types.Location
+    deck: Deck,
+    from_slot: Optional[types.DeckLocation],
+    to_slot: Optional[types.DeckLocation],
 ) -> bool:
     """
     Decide if the requested path would cross the thermocycler, if
@@ -61,7 +62,7 @@ def should_dodge_thermocycler(
     Returns True if we need to dodge, False otherwise
     """
     if deck.thermocycler_present:
-        transit = (from_loc.labware.first_parent(), to_loc.labware.first_parent())
+        transit = (from_slot, to_slot)
         # mypy doesn't like this because transit could be none, but it's
         # checked by value in BAD_PAIRS which has only strings
         return transit in BAD_PAIRS
@@ -83,16 +84,12 @@ class MoveConstraints:
 
 
 def get_move_type(
-    from_loc: types.Location,
-    to_loc: types.Location,
+    same_labware: bool,
+    same_well: bool,
     force_direct: bool = False,
 ) -> MoveType:
     """Given two Locations, return the type of move."""
     move_type = MoveType.GENERAL_ARC
-    from_labware, from_well = from_loc.labware.get_parent_labware_and_well()
-    to_labware, to_well = to_loc.labware.get_parent_labware_and_well()
-    same_labware = to_labware is not None and to_labware == from_labware
-    same_well = to_well is not None and to_well == from_well
 
     if same_labware:
         move_type = MoveType.DIRECT if same_well else MoveType.IN_LABWARE_ARC
@@ -101,14 +98,15 @@ def get_move_type(
 
 
 def safe_height(
-    from_loc: types.Location,
-    to_loc: types.Location,
+    from_point: types.Point,
+    from_well_highest_z: Optional[float],
+    from_labware_highest_z: Optional[float],
+    to_point: types.Point,
+    to_well_highest_z: Optional[float],
+    to_labware_highest_z: Optional[float],
+    same_labware: bool,
     deck: Deck,
     instr_max_height: float,
-    well_z_margin: float = None,
-    lw_z_margin: float = None,
-    minimum_lw_z_margin: float = None,
-    minimum_z_height: float = None,
 ) -> float:
     """
     Derive the height required to clear the current deck setup along
@@ -127,44 +125,55 @@ def safe_height(
     :param minimum_z_height: When specified, this Z margin is able to raise
                              (but never lower) the mid-arc height.
     """
-    constraints = MoveConstraints.build(
-        instr_max_height=instr_max_height,
-        well_z_margin=well_z_margin,
-        lw_z_margin=lw_z_margin,
-        minimum_lw_z_margin=minimum_lw_z_margin,
-        minimum_z_height=minimum_z_height,
-    )
+    constraints = MoveConstraints.build(instr_max_height=instr_max_height)
     assert constraints.minimum_z_height >= 0.0
-    return _build_safe_height(from_loc, to_loc, deck, constraints)
+    return _build_safe_height(
+        to_point=to_point,
+        to_well_highest_z=to_well_highest_z,
+        to_labware_highest_z=to_labware_highest_z,
+        from_point=from_point,
+        from_well_highest_z=from_well_highest_z,
+        from_labware_highest_z=from_labware_highest_z,
+        same_labware=same_labware,
+        deck=deck,
+        constraints=constraints,
+    )
 
 
 def _build_safe_height(
-    from_loc: types.Location,
-    to_loc: types.Location,
+    from_point: types.Point,
+    from_well_highest_z: Optional[float],
+    from_labware_highest_z: Optional[float],
+    to_point: types.Point,
+    to_well_highest_z: Optional[float],
+    to_labware_highest_z: Optional[float],
+    same_labware: bool,
     deck: Deck,
     constraints: MoveConstraints,
 ) -> float:
-    to_point = to_loc.point
-    to_lw, to_well = to_loc.labware.get_parent_labware_and_well()
-    from_point = from_loc.point
-    from_lw, from_well = from_loc.labware.get_parent_labware_and_well()
-
-    if to_lw and to_lw == from_lw:
+    if (
+        to_labware_highest_z is not None
+        and from_labware_highest_z is not None
+        and same_labware
+    ):
         # If we know the labwares we’re moving from and to, we can calculate
         # a safe z based on their heights
-        if to_well:
-            to_safety = to_well.top().point.z + constraints.well_z_margin
+        if to_well_highest_z is not None:
+            to_safety = to_well_highest_z + constraints.well_z_margin
         else:
-            to_safety = to_lw.highest_z + constraints.well_z_margin
-        if from_well:
-            from_safety = from_well.top().point.z + constraints.well_z_margin
+            to_safety = to_labware_highest_z + constraints.well_z_margin
+
+        if from_well_highest_z is not None:
+            from_safety = from_well_highest_z + constraints.well_z_margin
         else:
-            from_safety = from_lw.highest_z + constraints.well_z_margin
+            from_safety = from_labware_highest_z + constraints.well_z_margin
+
         # if we are already at the labware, we know the instr max height would
         # be tall enough
         if max(from_safety, to_safety) > constraints.instr_max_height:
             to_safety = constraints.instr_max_height
             from_safety = 0.0  # (ignore since it's in a max())
+
     else:
         # One of our labwares is invalid so we have to just go above
         # deck.highest_z since we don’t know where we are
@@ -204,15 +213,22 @@ def _build_safe_height(
 
 
 def plan_moves(
-    from_loc: types.Location,
-    to_loc: types.Location,
+    from_point: types.Point,
+    from_slot: Optional[types.DeckLocation],
+    from_well_highest_z: Optional[float],
+    from_labware_highest_z: Optional[float],
+    from_critical_point: Optional[CriticalPoint],
+    to_point: types.Point,
+    to_slot: Optional[types.DeckLocation],
+    to_labware_highest_z: Optional[float],
+    to_well_highest_z: Optional[float],
+    to_critical_point: Optional[CriticalPoint],
+    same_labware: bool,
+    same_well: bool,
     deck: Deck,
     instr_max_height: float,
-    well_z_margin: float = None,
-    lw_z_margin: float = None,
-    force_direct: bool = False,
-    minimum_lw_z_margin: float = None,
-    minimum_z_height: float = None,
+    force_direct: bool,
+    minimum_z_height: float,
     use_experimental_waypoint_planning: bool = False,
 ) -> List[Tuple[types.Point, Optional[CriticalPoint]]]:
     """Plan moves between one :py:class:`.Location` and another.
@@ -235,33 +251,22 @@ def plan_moves(
     """
     constraints = MoveConstraints.build(
         instr_max_height=instr_max_height,
-        well_z_margin=well_z_margin,
-        lw_z_margin=lw_z_margin,
-        minimum_lw_z_margin=minimum_lw_z_margin,
         minimum_z_height=minimum_z_height,
     )
     assert constraints.minimum_z_height >= 0.0
 
-    to_point = to_loc.point
-    to_lw, to_well = to_loc.labware.get_parent_labware_and_well()
-    from_point = from_loc.point
-    from_lw, from_well = from_loc.labware.get_parent_labware_and_well()
-    from_center = LabwareLike(from_lw).center_multichannel_on_wells()
-    to_center = LabwareLike(to_lw).center_multichannel_on_wells()
-    dest_cp_override = CriticalPoint.XY_CENTER if to_center else None
-    origin_cp_override = CriticalPoint.XY_CENTER if from_center else None
     extra_waypoints = []
 
-    if should_dodge_thermocycler(deck, from_loc, to_loc):
+    if should_dodge_thermocycler(deck, from_slot, to_slot):
         sc = deck.get_slot_center("5")
         extra_waypoints = [(sc.x, sc.y)]
 
     if use_experimental_waypoint_planning:
-        move_type = get_move_type(from_loc, to_loc, force_direct)
+        move_type = get_move_type(same_labware, same_well, force_direct)
         min_travel_z = deck.highest_z
 
-        if to_lw is not None and move_type == MoveType.IN_LABWARE_ARC:
-            min_travel_z = to_lw.highest_z
+        if to_labware_highest_z is not None and move_type == MoveType.IN_LABWARE_ARC:
+            min_travel_z = to_labware_highest_z
 
         # TODO(mc, 2020-11-05): if this ever needs to be used, we need a
         # story to re-create error messaging from LabwareHeightError above if
@@ -273,27 +278,36 @@ def plan_moves(
             max_travel_z=instr_max_height,
             move_type=move_type,
             xy_waypoints=extra_waypoints,
-            origin_cp=origin_cp_override,
-            dest_cp=dest_cp_override,
+            origin_cp=from_critical_point,
+            dest_cp=to_critical_point,
         )
         return [(wp.position, wp.critical_point) for wp in waypoints]
 
-    is_same_location = (to_lw and to_lw == from_lw) and (
-        to_well and to_well == from_well
-    )
+    is_same_location = same_labware and same_well
+
     if force_direct or (is_same_location and not (minimum_z_height or 0) > 0):
         # If we’re going direct, we can assume we’re already in the correct
         # cp so we can use the override without prep
-        return [(to_point, dest_cp_override)]
+        return [(to_point, to_critical_point)]
 
     # Find the safe z heights based on the destination and origin labware/well
-    safe = _build_safe_height(from_loc, to_loc, deck, constraints)
+    safe = _build_safe_height(
+        from_point=from_point,
+        from_well_highest_z=from_well_highest_z,
+        from_labware_highest_z=from_labware_highest_z,
+        to_point=to_point,
+        to_well_highest_z=to_well_highest_z,
+        to_labware_highest_z=to_labware_highest_z,
+        same_labware=same_labware,
+        deck=deck,
+        constraints=constraints,
+    )
 
     return plan_arc(
-        from_point,
-        to_point,
-        safe,
-        origin_cp_override,
-        dest_cp_override,
-        extra_waypoints,
+        origin_point=from_point,
+        dest_point=to_point,
+        z_height=safe,
+        origin_cp=from_critical_point,
+        dest_cp=to_critical_point,
+        extra_waypoints=extra_waypoints,
     )

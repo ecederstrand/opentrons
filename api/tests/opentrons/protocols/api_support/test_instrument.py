@@ -30,7 +30,7 @@ def test_determine_drop_target(api_version, expected_point):
     lw_mock.is_tiprack = mock.MagicMock(return_value=True)
     lw_mock.get_tip_length = mock.MagicMock(return_value=1)
     well = Well(
-        well_implementation=WellImplementation(
+        core=WellImplementation(
             well_geometry=WellGeometry(
                 well_props={
                     "shape": "circular",

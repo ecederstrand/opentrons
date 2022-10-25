@@ -30,11 +30,7 @@ MODULE_LOG = logging.getLogger(__name__)
 
 
 class APIVersionError(Exception):
-    """
-    Error raised when a protocol attempts to access behavior not implemented
-    """
-
-    pass
+    """Error raised when a protocol attempts to use methods from a later API version."""
 
 
 class UnsupportedAPIError(Exception):
@@ -331,13 +327,10 @@ FuncT = TypeVar("FuncT", bound=Callable[..., Any])
 
 
 def requires_version(major: int, minor: int) -> Callable[[FuncT], FuncT]:
-    """Decorator. Apply to Protocol API methods or attributes to indicate
-    the first version in which the method or attribute was present.
-    """
+    """Indicate the Protocol API version a decorated method was added in."""
+    added_version = APIVersion(major, minor)
 
     def _set_version(decorated_obj: FuncT) -> FuncT:
-        added_version = APIVersion(major, minor)
-        setattr(decorated_obj, "__opentrons_version_added", added_version)
         if hasattr(decorated_obj, "__doc__"):
             # Add the versionadded stanza to everything decorated if we can
             docstr = decorated_obj.__doc__ or ""
@@ -350,21 +343,16 @@ def requires_version(major: int, minor: int) -> Callable[[FuncT], FuncT]:
         @functools.wraps(decorated_obj)
         def _check_version_wrapper(*args: Any, **kwargs: Any) -> Any:
             slf = args[0]
-            added_in = decorated_obj.__opentrons_version_added  # type: ignore
             current_version = slf._api_version
 
-            if APIVersion(2, 0) <= current_version < added_in:
-                # __qualname__ is *probably* set on every kind of object we care
-                # about, but the docs leave it ambiguous, so fall back to str().
-                name = getattr(decorated_obj, "__qualname__", str(decorated_obj))
+            if current_version >= added_version:
+                return decorated_obj(*args, **kwargs)
 
-                raise APIVersionError(
-                    f"{name} was added in {added_in}, but your "
-                    f"protocol requested version {current_version}. You "
-                    f"must increase your API version to {added_in} to "
-                    "use this functionality."
-                )
-            return decorated_obj(*args, **kwargs)
+            raise APIVersionError(
+                f"{decorated_obj.__qualname__} was added in {added_version},"
+                f" but your protocol requested version {current_version}."
+                " Increase your Protocol API version to use this functionality."
+            )
 
         return cast(FuncT, _check_version_wrapper)
 

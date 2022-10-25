@@ -9,10 +9,11 @@ from opentrons import types
 from opentrons.hardware_control.dev_types import PipetteDict
 from opentrons.protocols.api_support.util import Clearances, PlungerSpeeds, FlowRates
 
+from .labware import LabwareCoreType
 from .well import WellCoreType
 
 
-class AbstractInstrument(ABC, Generic[WellCoreType]):
+class AbstractInstrument(ABC, Generic[LabwareCoreType, WellCoreType]):
     @abstractmethod
     def get_default_speed(self) -> float:
         ...
@@ -65,7 +66,9 @@ class AbstractInstrument(ABC, Generic[WellCoreType]):
     @abstractmethod
     def move_to(
         self,
-        location: types.Location,
+        point: types.Point,
+        well_core: Optional[WellCoreType],
+        labware_core: Optional[LabwareCoreType],
         force_direct: bool,
         minimum_z_height: Optional[float],
         speed: Optional[float],
@@ -159,4 +162,4 @@ class AbstractInstrument(ABC, Generic[WellCoreType]):
         ...
 
 
-InstrumentCoreType = TypeVar("InstrumentCoreType", bound=AbstractInstrument[Any])
+InstrumentCoreType = TypeVar("InstrumentCoreType", bound=AbstractInstrument[Any, Any])

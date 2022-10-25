@@ -58,7 +58,7 @@ def tip_length_for(pipette: PipetteDict, tiprack: Labware) -> float:
 
     try:
         return get.load_tip_length_calibration(
-            pipette["pipette_id"], tiprack._implementation.get_definition()
+            pipette["pipette_id"], tiprack._core.get_definition()
         ).tip_length
     except TipLengthCalNotFound:
         return _build_length_from_overlap()
@@ -79,7 +79,7 @@ def validate_tiprack(
     """Validate a tiprack logging a warning message."""
     # TODO AA 2020-06-24 - we should instead add the acceptable Opentrons
     #  tipracks to the pipette as a refactor
-    if tiprack._implementation.get_definition()["namespace"] == "opentrons":
+    if tiprack._core.get_definition()["namespace"] == "opentrons":
         tiprack_vol = tiprack.wells()[0].max_volume
         valid_vols = VALID_PIP_TIPRACK_VOL[instrument_name.split("_")[0]]
         if tiprack_vol not in valid_vols:

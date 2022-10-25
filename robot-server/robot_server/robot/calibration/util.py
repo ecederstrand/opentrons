@@ -158,14 +158,26 @@ async def move(
     to_loc: Location,
     this_move_cp: Optional[CriticalPoint] = None,
 ):
-    from_pt = await user_flow.get_current_point(None)
-    from_loc = Location(from_pt, None)
+    from_point = await user_flow.get_current_point(None)
     cp = this_move_cp or user_flow.critical_point_override
 
     max_height = user_flow.hardware.get_instrument_max_height(user_flow.mount)
+    to_labware, to_well = to_loc.labware.get_parent_labware_and_well()
 
-    safe = planning.safe_height(from_loc, to_loc, user_flow.deck, max_height)
-    moves = plan_arc(from_pt, to_loc.point, safe, origin_cp=None, dest_cp=cp)
+    safe = planning.safe_height(
+        from_point,
+        from_well_highest_z=None,
+        from_labware_highest_z=None,
+        to_point=to_loc.point,
+        to_well_highest_z=to_well.top().point.z if to_well else None,
+        to_labware_highest_z=to_labware.highest_z if to_labware else None,
+        same_labware=False,
+        deck=user_flow.deck,
+        instr_max_height=max_height,
+    )
+
+    moves = plan_arc(from_point, to_loc.point, safe, origin_cp=None, dest_cp=cp)
+
     for move in moves:
         await user_flow.hardware.move_to(
             mount=user_flow.mount, abs_position=move[0], critical_point=move[1]
@@ -200,7 +212,7 @@ def save_tip_length_calibration(
     # tip length data, hence the empty string, we should remove it
     # from create_tip_length_data in a refactor
     tip_length_data = modify.create_tip_length_data(
-        tip_rack._implementation.get_definition(), tip_length_offset
+        tip_rack._core.get_definition(), tip_length_offset
     )
     modify.save_tip_length_calibration(pipette_id, tip_length_data)
 

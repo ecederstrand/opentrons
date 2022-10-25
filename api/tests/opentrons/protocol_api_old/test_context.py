@@ -27,28 +27,6 @@ from opentrons.calibration_storage import get, modify, delete, types as cs_types
 import pytest
 
 
-def set_version_added(attr, mp, version):
-    """helper to mock versionadded for an attr
-
-    attr is the attr
-    mp is a monkeypatch fixture
-    version is an APIVersion
-    """
-
-    def get_wrapped(attr):
-        if hasattr(attr, "__wrapped__"):
-            return get_wrapped(attr.__wrapped__)
-        return attr
-
-    if hasattr(attr, "fget"):
-        # this is a property probably
-        orig = get_wrapped(attr.fget)
-    else:
-        orig = get_wrapped(attr)
-    mp.setattr(orig, "__opentrons_version_added", version)
-    return attr
-
-
 @pytest.fixture
 def get_labware_def(monkeypatch):
     def dummy_load(
@@ -82,16 +60,16 @@ def test_load_instrument(name, ctx):
 async def test_motion(ctx, hardware):
     ctx.home()
     instr = ctx.load_instrument("p10_single", Mount.RIGHT)
-    old_pos = await hardware.current_position(instr._implementation.get_mount())
+    old_pos = await hardware.current_position(instr._core.get_mount())
     instr.home()
     assert instr.move_to(Location(Point(0, 0, 0), None)) is instr
     old_pos[Axis.X] = 0.0
     old_pos[Axis.Y] = 0.0
     old_pos[Axis.A] = 0.0
     old_pos[Axis.C] = 2.0
-    assert await hardware.current_position(
-        instr._implementation.get_mount()
-    ) == pytest.approx(old_pos)
+    assert await hardware.current_position(instr._core.get_mount()) == pytest.approx(
+        old_pos
+    )
 
 
 def test_max_speeds(ctx, monkeypatch, hardware):
@@ -124,39 +102,41 @@ async def test_location_cache(ctx, monkeypatch, get_labware_def, hardware):
     lw = ctx.load_labware("corning_96_wellplate_360ul_flat", 1)
     ctx.home()
 
-    test_args = None
-
-    def fake_plan_move(
-        from_loc,
-        to_loc,
-        deck,
-        well_z_margin=None,
-        lw_z_margin=None,
-        force_direct=False,
-        minimum_z_height=None,
-    ):
-        nonlocal test_args
-        test_args = (from_loc, to_loc, deck, well_z_margin, lw_z_margin)
-        return [
+    with mock.patch.object(papi_geometry.planning, "plan_moves") as mock_plan_moves:
+        mock_plan_moves.return_value = [
             (Point(0, 1, 10), None),
             (Point(1, 2, 10), None),
             (Point(1, 2, 3), None),
         ]
 
-    monkeypatch.setattr(papi_geometry.planning, "plan_moves", fake_plan_move)
-    # When we move without a cache, the from location should be the gantry
-    # position
-    gantry_pos = await hardware.gantry_position(Mount.RIGHT)
-    right.move_to(lw.wells()[0].top())
-    # The home position from hardware_control/simulator.py, taking into account
-    # that the right pipette is a p10 single which is a different height than
-    # the reference p300 single
-    assert test_args[0].point == gantry_pos  # type: ignore[index]
-    assert test_args[0].labware.is_empty  # type: ignore[index]
+        # When we move without a cache, the from location should be the gantry
+        # position
+        gantry_pos = await hardware.gantry_position(Mount.RIGHT)
+        right.move_to(lw.wells()[0].top())
 
-    # Once we have a location cache, that should be our from_loc
-    right.move_to(lw.wells()[1].top())
-    assert test_args[0].labware.as_well() == lw.wells()[0]  # type: ignore[index]
+        _, mock_plan_moves_kwargs = mock_plan_moves.call_args
+
+        # The home position from hardware_control/simulator.py, taking into account
+        # that the right pipette is a p10 single which is a different height than
+        # the reference p300 single
+        assert mock_plan_moves_kwargs["from_point"] == gantry_pos
+        assert mock_plan_moves_kwargs["from_slot"] is None
+        assert mock_plan_moves_kwargs["from_well_highest_z"] is None
+        assert mock_plan_moves_kwargs["from_labware_highest_z"] is None
+        assert mock_plan_moves_kwargs["from_critical_point"] is None
+
+        # Once we have a location cache, that should be our from_loc
+        right.move_to(lw.wells()[1].top())
+
+        _, mock_plan_moves_kwargs = mock_plan_moves.call_args
+
+        assert mock_plan_moves_kwargs["from_point"] == Point(1, 2, 3)
+        assert mock_plan_moves_kwargs["from_slot"] == "1"
+        assert (
+            mock_plan_moves_kwargs["from_well_highest_z"] == lw.wells()[1].top().point.z
+        )
+        assert mock_plan_moves_kwargs["from_labware_highest_z"] == lw.highest_z
+        assert mock_plan_moves_kwargs["from_critical_point"] is None
 
 
 def test_location_cache_two_pipettes(ctx, get_labware_def, hardware):
@@ -169,16 +149,18 @@ def test_location_cache_two_pipettes(ctx, get_labware_def, hardware):
     left_loc = Location(point=Point(1, 2, 3), labware="1")
     right_loc = Location(point=Point(3, 4, 5), labware="2")
 
-    with mock.patch.object(papi_geometry.planning, "plan_moves") as m:
+    with mock.patch.object(papi_geometry.planning, "plan_moves") as mock_plan_moves:
         # The first moves. The location cache is empty.
         left.move_to(left_loc)
-        assert m.call_args[0][0].labware.is_empty
-        assert m.call_args[0][1] == left_loc
+        _, mock_plan_moves_kwargs = mock_plan_moves.call_args
+        assert mock_plan_moves_kwargs["from_slot"] is None
+        assert mock_plan_moves_kwargs["to_point"] == left_loc.point
         # The second move the location cache is not used because we're moving
         # a different pipette.
         right.move_to(right_loc)
-        assert m.call_args[0][0].labware.is_empty
-        assert m.call_args[0][1] == right_loc
+        _, mock_plan_moves_kwargs = mock_plan_moves.call_args
+        assert mock_plan_moves_kwargs["from_slot"] is None
+        assert mock_plan_moves_kwargs["to_point"] == right_loc.point
 
 
 def test_location_cache_two_pipettes_fails_pre_2_10(ctx, get_labware_def, hardware):
@@ -187,20 +169,23 @@ def test_location_cache_two_pipettes_fails_pre_2_10(ctx, get_labware_def, hardwa
     ctx.home()
     left = ctx.load_instrument("p10_single", Mount.LEFT)
     right = ctx.load_instrument("p10_single", Mount.RIGHT)
-    left._implementation._api_version = APIVersion(2, 9)
-    right._implementation._api_version = APIVersion(2, 9)
+    left._core._api_version = APIVersion(2, 9)
+    right._core._api_version = APIVersion(2, 9)
 
     left_loc = Location(point=Point(1, 2, 3), labware="1")
     right_loc = Location(point=Point(3, 4, 5), labware="2")
 
-    with mock.patch.object(papi_geometry.planning, "plan_moves") as m:
+    with mock.patch.object(papi_geometry.planning, "plan_moves") as mock_plan_moves:
         # The first moves. The location cache is empty.
         left.move_to(left_loc)
-        assert m.call_args[0][0].labware.is_empty
-        assert m.call_args[0][1] == left_loc
+        _, mock_plan_moves_kwargs = mock_plan_moves.call_args
+        assert mock_plan_moves_kwargs["from_slot"] is None
+        assert mock_plan_moves_kwargs["to_point"] == left_loc.point
+        # The second move erroneously uses location cache due to APIVersion < 2.10
         right.move_to(right_loc)
-        assert m.call_args[0][0].labware == left_loc.labware
-        assert m.call_args[0][1] == right_loc
+        _, mock_plan_moves_kwargs = mock_plan_moves.call_args
+        assert mock_plan_moves_kwargs["from_slot"] == "1"
+        assert mock_plan_moves_kwargs["to_point"] == right_loc.point
 
 
 def test_move_uses_arc(ctx, monkeypatch, get_labware_def, hardware):
@@ -1009,7 +994,7 @@ def test_tip_length_for(ctx, monkeypatch):
     instr = ctx.load_instrument("p20_single_gen2", "left")
     tiprack = ctx.load_labware("geb_96_tiprack_10ul", "1")
     assert instr._tip_length_for(tiprack) == (
-        tiprack._implementation.get_definition()["parameters"]["tipLength"]
+        tiprack._core.get_definition()["parameters"]["tipLength"]
         - instr.hw_pipette["tip_overlap"]["opentrons/geb_96_tiprack_10ul/1"]
     )
 
@@ -1031,7 +1016,7 @@ def test_tip_length_for_caldata(ctx, monkeypatch):
     assert instr._tip_length_for(tiprack) == 2
     mock_tip_length.side_effect = cs_types.TipLengthCalNotFound
     assert instr._tip_length_for(tiprack) == (
-        tiprack._implementation.get_definition()["parameters"]["tipLength"]
+        tiprack._core.get_definition()["parameters"]["tipLength"]
         - instr.hw_pipette["tip_overlap"]["opentrons/geb_96_tiprack_10ul/1"]
     )
 
@@ -1043,7 +1028,7 @@ def test_tip_length_for_load_caldata(ctx):
     fake_tip_length = 31
 
     test_data = modify.create_tip_length_data(
-        tiprack._implementation.get_definition(), fake_tip_length
+        tiprack._core.get_definition(), fake_tip_length
     )
     modify.save_tip_length_calibration(pip_id, test_data)
 
@@ -1063,7 +1048,7 @@ def test_bundled_labware(get_labware_fixture, hardware):
 
     lw1 = ctx.load_labware("fixture_96_plate", 3, namespace="fixture")
     assert ctx.loaded_labwares[3] == lw1
-    assert ctx.loaded_labwares[3]._implementation.get_definition() == fixture_96_plate
+    assert ctx.loaded_labwares[3]._core.get_definition() == fixture_96_plate
 
 
 def test_bundled_labware_missing(get_labware_fixture, hardware):
@@ -1114,7 +1099,7 @@ def test_extra_labware(get_labware_fixture, hardware):
 
     ls1 = ctx.load_labware("fixture_96_plate", 3, namespace="fixture")
     assert ctx.loaded_labwares[3] == ls1
-    assert ctx.loaded_labwares[3]._implementation.get_definition() == fixture_96_plate
+    assert ctx.loaded_labwares[3]._core.get_definition() == fixture_96_plate
 
 
 def test_api_version_checking(hardware):
@@ -1135,18 +1120,13 @@ def test_api_version_checking(hardware):
 
 def test_api_per_call_checking(monkeypatch, hardware):
     ctx = papi.create_protocol_context(
-        api_version=APIVersion(1, 9),
-        hardware_api=hardware,
-    )
-
-    assert ctx.deck  # 1.9 < 2.0, but api version 1 is excepted from checking
-
-    ctx = papi.create_protocol_context(
         api_version=APIVersion(2, 1),
         hardware_api=hardware,
     )
+
     # versions > 2.0 are ok
     assert ctx.deck
+
     # set_rail_lights() was added in 2.5
     with pytest.raises(papi_support.util.APIVersionError):
         ctx.set_rail_lights(on=True)

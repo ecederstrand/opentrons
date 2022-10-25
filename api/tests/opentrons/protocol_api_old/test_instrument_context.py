@@ -11,8 +11,7 @@ from opentrons.protocols.api_support.types import APIVersion
 from opentrons.protocol_api import ProtocolContext, labware
 from opentrons.protocol_api.instrument_context import InstrumentContext
 from opentrons.protocol_api.labware import Well, Labware
-from opentrons.protocol_api.core.instrument import AbstractInstrument
-from opentrons.protocol_api.core.well import AbstractWellCore
+from opentrons.protocol_api.core.abstract import InstrumentCore
 
 
 @pytest.fixture(autouse=True)
@@ -66,10 +65,8 @@ def mock_protocol_context(decoy: Decoy) -> ProtocolContext:
 
 
 @pytest.fixture
-def mock_instrument_implementation(
-    decoy: Decoy,
-) -> AbstractInstrument[AbstractWellCore]:
-    return decoy.mock(cls=AbstractInstrument)
+def mock_instrument_core(decoy: Decoy) -> InstrumentCore:
+    return decoy.mock(cls=InstrumentCore)
 
 
 @pytest.fixture
@@ -79,35 +76,36 @@ def mock_labware(decoy: Decoy) -> Labware:
 
 @pytest.fixture
 def subject(
-    mock_instrument_implementation: AbstractInstrument[AbstractWellCore],
+    mock_instrument_core: InstrumentCore,
+    mock_labware: Labware,
     mock_protocol_context: ProtocolContext,
 ) -> InstrumentContext:
-
-    subject = InstrumentContext(
-        implementation=mock_instrument_implementation,
-        ctx=mock_protocol_context,
+    return InstrumentContext(
+        core=mock_instrument_core,
+        protocol_core=mock_protocol_context._implementation,
         broker=Broker(),
-        at_version=APIVersion(2, 0),
+        api_version=APIVersion(2, 0),
+        trash=mock_labware,
+        tip_racks=[],
     )
-
-    return subject
 
 
 def test_pick_up_from_exact_well_location(
     decoy: Decoy,
     subject: InstrumentContext,
-    mock_instrument_implementation: AbstractInstrument[AbstractWellCore],
+    mock_instrument_core: InstrumentCore,
 ) -> None:
     """Should pick up tip from supplied exact Well Location."""
     mock_well = decoy.mock(cls=Well)
-    input_location = Location(point=Point(-100, -100, 0), labware=mock_well)
-    expected_location = Location(point=Point(-100, -100, 0), labware=mock_well)
+    location = Location(point=Point(-100, -100, 0), labware=mock_well)
 
-    subject.pick_up_tip(location=input_location)
+    subject.pick_up_tip(location=location)
 
     decoy.verify(
-        mock_instrument_implementation.move_to(
-            location=expected_location,
+        mock_instrument_core.move_to(
+            point=Point(-100, -100, 0),
+            well_core=mock_well._core,
+            labware_core=mock_well.parent._core,
             force_direct=False,
             minimum_z_height=None,
             speed=None,
@@ -119,7 +117,7 @@ def test_pick_up_from_exact_well_location(
 def test_pick_up_from_exact_labware_location(
     decoy: Decoy,
     subject: InstrumentContext,
-    mock_instrument_implementation: AbstractInstrument[AbstractWellCore],
+    mock_instrument_core: InstrumentCore,
     mock_labware: Labware,
 ) -> None:
     """Should pick up tip from supplied exact labware Location."""
@@ -136,8 +134,10 @@ def test_pick_up_from_exact_labware_location(
     subject.pick_up_tip(location=input_location)
 
     decoy.verify(
-        mock_instrument_implementation.move_to(
-            location=expected_location,
+        mock_instrument_core.move_to(
+            point=expected_location.point,
+            well_core=mock_well._core,
+            labware_core=mock_well.parent._core,
             force_direct=False,
             minimum_z_height=None,
             speed=None,
@@ -149,10 +149,9 @@ def test_pick_up_from_exact_labware_location(
 def test_pick_up_from_manipulated_location(
     decoy: Decoy,
     subject: InstrumentContext,
-    mock_instrument_implementation: AbstractInstrument[AbstractWellCore],
+    mock_instrument_core: InstrumentCore,
 ) -> None:
     """Should pick up tip from move result of types.Location."""
-
     mock_well = decoy.mock(cls=Well)
     initial_location = Location(Point(0, 0, 0), labware=mock_well)
     move_to_location = initial_location.move(point=Point(x=-100, y=-100, z=0))
@@ -160,8 +159,10 @@ def test_pick_up_from_manipulated_location(
     subject.pick_up_tip(location=move_to_location)
 
     decoy.verify(
-        mock_instrument_implementation.move_to(
-            location=move_to_location,
+        mock_instrument_core.move_to(
+            point=move_to_location.point,
+            well_core=mock_well._core,
+            labware_core=mock_well.parent._core,
             force_direct=False,
             minimum_z_height=None,
             speed=None,
@@ -173,7 +174,7 @@ def test_pick_up_from_manipulated_location(
 def test_pick_up_from_well(
     decoy: Decoy,
     subject: InstrumentContext,
-    mock_instrument_implementation: AbstractInstrument[AbstractWellCore],
+    mock_instrument_core: InstrumentCore,
     mock_labware: Labware,
 ) -> None:
     """Should pick up tip from supplied well location top."""
@@ -184,14 +185,15 @@ def test_pick_up_from_well(
         mock_labware.use_tips(start_well=mock_well, num_channels=None)  # type: ignore[arg-type]
     ).then_return(False)
 
-    decoy.when(mock_well.parent).then_return(mock_labware)
     decoy.when(mock_well.top()).then_return(expected_location)
 
     subject.pick_up_tip(location=mock_well)
 
     decoy.verify(
-        mock_instrument_implementation.move_to(
-            location=expected_location,
+        mock_instrument_core.move_to(
+            point=Point(0, 0, 0),
+            well_core=mock_well._core,
+            labware_core=mock_well.parent._core,
             force_direct=False,
             minimum_z_height=None,
             speed=None,
@@ -203,7 +205,7 @@ def test_pick_up_from_well(
 def test_pick_up_from_no_location(
     decoy: Decoy,
     subject: InstrumentContext,
-    mock_instrument_implementation: AbstractInstrument[AbstractWellCore],
+    mock_instrument_core: InstrumentCore,
     mock_labware: Labware,
 ) -> None:
     """Should pick up tip from next_available_tip.top()."""
@@ -211,7 +213,7 @@ def test_pick_up_from_no_location(
 
     expected_location = Location(Point(0, 0, 0), mock_well)
 
-    decoy.when(mock_instrument_implementation.get_channels()).then_return(42)
+    decoy.when(mock_instrument_core.get_channels()).then_return(42)
     decoy.when(labware.next_available_tip(None, [], 42)).then_return(
         (mock_labware, mock_well)
     )
@@ -223,8 +225,10 @@ def test_pick_up_from_no_location(
     subject.pick_up_tip(location=None)
 
     decoy.verify(
-        mock_instrument_implementation.move_to(
-            location=expected_location,
+        mock_instrument_core.move_to(
+            point=Point(0, 0, 0),
+            well_core=mock_well._core,
+            labware_core=mock_well.parent._core,
             force_direct=False,
             minimum_z_height=None,
             speed=None,

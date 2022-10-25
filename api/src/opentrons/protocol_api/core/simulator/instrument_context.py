@@ -3,23 +3,29 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 from opentrons import types
-from opentrons.hardware_control import NoTipAttachedError, TipAttachedError
+from opentrons.hardware_control import (
+    CriticalPoint,
+    NoTipAttachedError,
+    TipAttachedError,
+)
 from opentrons.hardware_control.dev_types import PipetteDict
 from opentrons.hardware_control.types import HardwareAction
-from opentrons.protocols.api_support.labware_like import LabwareLike
 from opentrons.protocols.api_support.types import APIVersion
 from opentrons.protocols.api_support.definitions import MAX_SUPPORTED_VERSION
 from opentrons.protocols.api_support.util import FlowRates, PlungerSpeeds, Clearances
 from opentrons.protocols.geometry import planning
 
 from ..instrument import AbstractInstrument
+from ..protocol_api.labware import LabwareImplementation
 from ..protocol_api.well import WellImplementation
 
 if TYPE_CHECKING:
     from .protocol_context import ProtocolContextSimulation
 
 
-class InstrumentContextSimulation(AbstractInstrument[WellImplementation]):
+class InstrumentContextSimulation(
+    AbstractInstrument[LabwareImplementation, WellImplementation]
+):
     """A simulation of an instrument context."""
 
     def __init__(
@@ -115,29 +121,78 @@ class InstrumentContextSimulation(AbstractInstrument[WellImplementation]):
 
     def move_to(
         self,
-        location: types.Location,
+        point: types.Point,
+        well_core: WellImplementation,
+        labware_core: LabwareImplementation,
         force_direct: bool,
         minimum_z_height: Optional[float],
         speed: Optional[float],
     ) -> None:
         """Simulation of only the motion planning portion of move_to."""
-        last_location = self._protocol_interface.get_last_location()
+        location_cache_mount = (
+            self._mount if self._api_version >= APIVersion(2, 10) else None
+        )
+
+        last_location = self._protocol_interface.get_last_location(
+            mount=location_cache_mount
+        )
+
+        from_point = types.Point(0, 0, 0)
+        from_slot = None
+        from_well_highest_z = None
+        from_labware_highest_z = None
+        from_critical_point = None
+        to_slot = None
+        to_well_highest_z = None
+        to_labware_highest_z = None
+        to_critical_point = None
+        same_labware = False
+        same_well = False
+
+        if labware_core:
+            to_slot = labware_core.get_slot()
+            to_labware_highest_z = labware_core.highest_z
+            if labware_core.get_center_multichannel_on_wells():
+                to_critical_point = CriticalPoint.XY_CENTER
+
+        if well_core:
+            to_well_highest_z = well_core.get_geometry().top().z
+
         if last_location:
-            from_loc = last_location
-        else:
-            from_loc = types.Location(types.Point(0, 0, 0), LabwareLike(None))
+            from_point = last_location.point
+            from_lw, from_well = last_location.labware.get_parent_labware_and_well()
+            from_slot = last_location.labware.first_parent
+
+            if last_location.labware.center_multichannel_on_wells():
+                from_critical_point = CriticalPoint.XY_CENTER
+
+            if from_well:
+                same_well = from_well._core is well_core
+                from_well_highest_z = from_well.top().point.z
+
+            if from_lw:
+                same_labware = from_lw._core is labware_core
+                from_labware_highest_z = from_lw.highest_z
 
         # We just want to catch planning errors.
         planning.plan_moves(
-            from_loc,
-            location,
-            self._protocol_interface.get_deck(),
-            self._instrument_max_height,
+            from_point=from_point,
+            from_slot=from_slot,
+            from_well_highest_z=from_well_highest_z,
+            from_labware_highest_z=from_labware_highest_z,
+            from_critical_point=from_critical_point,
+            to_point=point,
+            to_slot=to_slot,
+            to_labware_highest_z=to_labware_highest_z,
+            to_well_hightest_z=to_well_highest_z,
+            to_critical_point=to_critical_point,
+            same_labware=same_labware,
+            same_well=same_well,
+            deck=self._protocol_interface.get_deck(),
+            instr_max_height=self._instrument_max_height,
             force_direct=force_direct,
             minimum_z_height=minimum_z_height,
         )
-
-        self._protocol_interface.set_last_location(location)
 
     def get_mount(self) -> types.Mount:
         return self._mount

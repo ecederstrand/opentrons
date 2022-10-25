@@ -207,18 +207,18 @@ def test_clear_tip_length_calibration_data(monkeypatch):
 
 def test_wells_rebuilt_with_offset():
     test_labware = labware.Labware(
-        implementation=LabwareImplementation(
+        core=LabwareImplementation(
             minimalLabwareDef, Location(Point(0, 0, 0), "deck")  # type: ignore[arg-type]
         )
     )
     old_wells = test_labware.wells()
-    assert test_labware._implementation.get_geometry().offset == Point(10, 10, 5)
-    assert test_labware._implementation.get_calibrated_offset() == Point(10, 10, 5)
+    assert test_labware._core.get_geometry().offset == Point(10, 10, 5)
+    assert test_labware._core.get_calibrated_offset() == Point(10, 10, 5)
     test_labware.set_offset(x=2, y=2, z=2)
     new_wells = test_labware.wells()
     assert old_wells[0] != new_wells[0]
-    assert test_labware._implementation.get_geometry().offset == Point(10, 10, 5)
-    assert test_labware._implementation.get_calibrated_offset() == Point(12, 12, 7)
+    assert test_labware._core.get_geometry().offset == Point(10, 10, 5)
+    assert test_labware._core.get_calibrated_offset() == Point(12, 12, 7)
 
 
 def test_hash_labware_def():

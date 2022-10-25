@@ -66,7 +66,7 @@ class Well:
 
     def __init__(
         self,
-        well_implementation: AbstractWellCore,
+        core: AbstractWellCore,
         api_level: Optional[APIVersion] = None,
     ):
         """
@@ -75,8 +75,8 @@ class Well:
 
         """
         self._api_version = api_level or MAX_SUPPORTED_VERSION
-        self._impl = well_implementation
-        self._geometry = well_implementation.get_geometry()
+        self._core = core
+        self._geometry = core.get_geometry()
 
     @property  # type: ignore
     @requires_version(2, 0)
@@ -86,16 +86,16 @@ class Well:
     @property  # type: ignore[misc]
     @requires_version(2, 0)
     def parent(self) -> Labware:
-        return Labware(implementation=self._geometry.parent, api_level=self.api_version)
+        return Labware(core=self._geometry.parent, api_level=self.api_version)
 
     @property  # type: ignore[misc]
     @requires_version(2, 0)
     def has_tip(self) -> bool:
-        return self._impl.has_tip()
+        return self._core.has_tip()
 
     @has_tip.setter
     def has_tip(self, value: bool) -> None:
-        self._impl.set_has_tip(value)
+        self._core.set_has_tip(value)
 
     @property
     def max_volume(self) -> float:
@@ -138,12 +138,12 @@ class Well:
 
     @property
     def display_name(self) -> str:
-        return self._impl.get_display_name()
+        return self._core.get_display_name()
 
     @property  # type: ignore
     @requires_version(2, 7)
     def well_name(self) -> str:
-        return self._impl.get_name()
+        return self._core.get_name()
 
     @requires_version(2, 0)
     def top(self, z: float = 0.0) -> Location:
@@ -210,7 +210,7 @@ class Well:
         return self.from_center_cartesian(x, y, z)
 
     def __repr__(self) -> str:
-        return self._impl.get_display_name()
+        return self._core.get_display_name()
 
     def __eq__(self, other: object) -> bool:
         """
@@ -255,7 +255,7 @@ class Labware(DeckItem):
 
     def __init__(
         self,
-        implementation: AbstractLabware[Any],
+        core: AbstractLabware[Any],
         api_level: Optional[APIVersion] = None,
     ) -> None:
         """
@@ -276,11 +276,11 @@ class Labware(DeckItem):
                 f"version or update your robot."
             )
         self._api_version = api_level
-        self._implementation: AbstractLabware[AbstractWellCore] = implementation
+        self._core: AbstractLabware[AbstractWellCore] = core
 
     @property
     def separate_calibration(self) -> bool:
-        return self._implementation.separate_calibration
+        return self._core.separate_calibration
 
     @property  # type: ignore
     @requires_version(2, 0)
@@ -297,51 +297,51 @@ class Labware(DeckItem):
 
         :returns: The uri, ``"namespace/loadname/version"``
         """
-        return self._implementation.get_uri()
+        return self._core.get_uri()
 
     @property  # type: ignore[misc]
     @requires_version(2, 0)
     def parent(self) -> LocationLabware:
         """The parent of this labware. Usually a slot name."""
-        return self._implementation.get_geometry().parent.labware.object
+        return self._core.get_geometry().parent.labware.object
 
     @property  # type: ignore[misc]
     @requires_version(2, 0)
     def name(self) -> str:
         """Can either be the canonical name of the labware, which is used to
         load it, or the label of the labware specified by a user."""
-        return self._implementation.get_name()
+        return self._core.get_name()
 
     @name.setter
     def name(self, new_name: str) -> None:
         """Set the labware name"""
-        self._implementation.set_name(new_name)
+        self._core.set_name(new_name)
 
     @property  # type: ignore[misc]
     @requires_version(2, 0)
     def load_name(self) -> str:
         """The API load name of the labware definition"""
-        return self._implementation.load_name
+        return self._core.load_name
 
     @property  # type: ignore[misc]
     @requires_version(2, 0)
     def parameters(self) -> "LabwareParameters":
         """Internal properties of a labware including type and quirks"""
-        return self._implementation.get_parameters()
+        return self._core.get_parameters()
 
     @property  # type: ignore
     @requires_version(2, 0)
     def quirks(self) -> List[str]:
         """Quirks specific to this labware."""
-        return self._implementation.get_quirks()
+        return self._core.get_quirks()
 
-    # TODO(mc, 2022-09-23): use `self._implementation.get_default_magnet_engage_height`
+    # TODO(mc, 2022-09-23): use `self._core.get_default_magnet_engage_height`
     # blocked until Labware actually respects API version
     # https://opentrons.atlassian.net/browse/RSS-97
     @property  # type: ignore
     @requires_version(2, 0)
     def magdeck_engage_height(self) -> Optional[float]:
-        p = self._implementation.get_parameters()
+        p = self._core.get_parameters()
         if not p["isMagneticModuleCompatible"]:
             return None
         else:
@@ -351,7 +351,7 @@ class Labware(DeckItem):
         """
         Called by save calibration in order to update the offset on the object.
         """
-        self._implementation.set_calibration(delta)
+        self._core.set_calibration(delta)
 
     @requires_version(2, 12)
     def set_offset(self, x: float, y: float, z: float) -> None:
@@ -373,20 +373,20 @@ class Labware(DeckItem):
             at the same time will produce undefined behavior. We may choose
             to define this behavior in a future release.
         """
-        self._implementation.set_calibration(Point(x=x, y=y, z=z))
+        self._core.set_calibration(Point(x=x, y=y, z=z))
 
     @property  # type: ignore
     @requires_version(2, 0)
     def calibrated_offset(self) -> Point:
-        return self._implementation.get_calibrated_offset()
+        return self._core.get_calibrated_offset()
 
     @requires_version(2, 0)
     def well(self, idx: Union[int, str]) -> Well:
         """Deprecated---use result of `wells` or `wells_by_name`"""
         if isinstance(idx, int):
-            res = self._implementation.get_wells()[idx]
+            res = self._core.get_wells()[idx]
         elif isinstance(idx, str):
-            res = self._implementation.get_wells_by_name()[idx]
+            res = self._core.get_wells_by_name()[idx]
         else:
             res = NotImplemented
         return self._well_from_impl(res)
@@ -410,11 +410,11 @@ class Labware(DeckItem):
         :return: Ordered list of all wells in a labware
         """
         if not args:
-            res = self._implementation.get_wells()
+            res = self._core.get_wells()
         elif isinstance(args[0], int):
-            res = [self._implementation.get_wells()[idx] for idx in args]  # type: ignore[index]
+            res = [self._core.get_wells()[idx] for idx in args]  # type: ignore[index]
         elif isinstance(args[0], str):
-            by_name = self._implementation.get_wells_by_name()
+            by_name = self._core.get_wells_by_name()
             res = [by_name[idx] for idx in args]  # type: ignore[index]
         else:
             raise TypeError
@@ -431,7 +431,7 @@ class Labware(DeckItem):
 
         :return: Dictionary of well objects keyed by well name
         """
-        wells = self._implementation.get_wells_by_name()
+        wells = self._core.get_wells_by_name()
         return {k: self._well_from_impl(v) for k, v in wells.items()}
 
     @requires_version(2, 0)
@@ -462,7 +462,7 @@ class Labware(DeckItem):
 
         :return: A list of row lists
         """
-        grid = self._implementation.get_well_grid()
+        grid = self._core.get_well_grid()
         if not args:
             res = grid.get_rows()
         elif isinstance(args[0], int):
@@ -484,7 +484,7 @@ class Labware(DeckItem):
 
         :return: Dictionary of Well lists keyed by row name
         """
-        row_dict = self._implementation.get_well_grid().get_row_dict()
+        row_dict = self._core.get_well_grid().get_row_dict()
         return {k: [self._well_from_impl(w) for w in v] for k, v in row_dict.items()}
 
     @requires_version(2, 0)
@@ -514,7 +514,7 @@ class Labware(DeckItem):
 
         :return: A list of column lists
         """
-        grid = self._implementation.get_well_grid()
+        grid = self._core.get_well_grid()
         if not args:
             res = grid.get_columns()
         elif isinstance(args[0], int):
@@ -537,7 +537,7 @@ class Labware(DeckItem):
 
         :return: Dictionary of Well lists keyed by column name
         """
-        column_dict = self._implementation.get_well_grid().get_column_dict()
+        column_dict = self._core.get_well_grid().get_column_dict()
         return {k: [self._well_from_impl(w) for w in v] for k, v in column_dict.items()}
 
     @requires_version(2, 0)
@@ -560,12 +560,12 @@ class Labware(DeckItem):
         This is drawn from the 'dimensions'/'zDimension' elements of the
         labware definition and takes into account the calibration offset.
         """
-        return self._implementation.highest_z
+        return self._core.highest_z
 
     @property
     def _is_tiprack(self) -> bool:
         """as is_tiprack but not subject to version checking for speed"""
-        return self._implementation.is_tiprack()
+        return self._core.is_tiprack()
 
     @property  # type: ignore[misc]
     @requires_version(2, 0)
@@ -575,11 +575,11 @@ class Labware(DeckItem):
     @property  # type: ignore[misc]
     @requires_version(2, 0)
     def tip_length(self) -> float:
-        return self._implementation.get_tip_length()
+        return self._core.get_tip_length()
 
     @tip_length.setter
     def tip_length(self, length: float) -> None:
-        self._implementation.set_tip_length(length)
+        self._core.set_tip_length(length)
 
     def next_tip(
         self, num_tips: int = 1, starting_tip: Optional[Well] = None
@@ -600,8 +600,8 @@ class Labware(DeckItem):
         """
         assert num_tips > 0, "Bad call to next_tip: num_tips <= 0"
 
-        well = self._implementation.get_tip_tracker().next_tip(
-            num_tips=num_tips, starting_tip=starting_tip._impl if starting_tip else None
+        well = self._core.get_tip_tracker().next_tip(
+            num_tips=num_tips, starting_tip=starting_tip._core if starting_tip else None
         )
         return self._well_from_impl(well) if well else None
 
@@ -629,22 +629,22 @@ class Labware(DeckItem):
 
         fail_if_full = self._api_version < APIVersion(2, 2)
 
-        self._implementation.get_tip_tracker().use_tips(
-            start_well=start_well._impl,
+        self._core.get_tip_tracker().use_tips(
+            start_well=start_well._core,
             num_channels=num_channels,
             fail_if_full=fail_if_full,
         )
 
     def __repr__(self) -> str:
-        return self._implementation.get_display_name()
+        return self._core.get_display_name()
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Labware):
             return NotImplemented
-        return self._implementation == other._implementation
+        return self._core == other._core
 
     def __hash__(self) -> int:
-        return hash((self._implementation, self._api_version))
+        return hash((self._core, self._api_version))
 
     def previous_tip(self, num_tips: int = 1) -> Optional[Well]:
         """
@@ -661,7 +661,7 @@ class Labware(DeckItem):
         # This logic is the inverse of :py:meth:`next_tip`
         assert num_tips > 0, "Bad call to previous_tip: num_tips <= 0"
 
-        well = self._implementation.get_tip_tracker().previous_tip(num_tips=num_tips)
+        well = self._core.get_tip_tracker().previous_tip(num_tips=num_tips)
         return self._well_from_impl(well) if well else None
 
     def return_tips(self, start_well: Well, num_channels: int = 1) -> None:
@@ -688,18 +688,18 @@ class Labware(DeckItem):
         # This logic is the inverse of :py:meth:`use_tips`
         assert num_channels > 0, "Bad call to return_tips: num_channels <= 0"
 
-        self._implementation.get_tip_tracker().return_tips(
-            start_well=start_well._impl, num_channels=num_channels
+        self._core.get_tip_tracker().return_tips(
+            start_well=start_well._core, num_channels=num_channels
         )
 
     @requires_version(2, 0)
     def reset(self) -> None:
         """Reset all tips in a tiprack"""
         if self._is_tiprack:
-            self._implementation.reset_tips()
+            self._core.reset_tips()
 
     def _well_from_impl(self, well: AbstractWellCore) -> Well:
-        return Well(well_implementation=well, api_level=self._api_version)
+        return Well(core=well, api_level=self._api_version)
 
 
 def split_tipracks(tip_racks: List[Labware]) -> Tuple[Labware, List[Labware]]:
@@ -779,11 +779,7 @@ def load_from_definition(
                       defaults to ``MAX_SUPPORTED_VERSION``.
     """
     return Labware(
-        implementation=LabwareImplementation(
-            definition=definition,
-            parent=parent,
-            label=label,
-        ),
+        core=LabwareImplementation(definition=definition, parent=parent, label=label),
         api_level=api_level,
     )
 

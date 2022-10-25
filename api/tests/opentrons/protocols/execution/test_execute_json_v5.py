@@ -12,7 +12,7 @@ def test_move_to_well_with_optional_params():
     instruments = {"somePipetteId": pipette_mock}
 
     well = labware.Well(
-        well_implementation=WellImplementation(
+        core=WellImplementation(
             well_geometry=WellGeometry(
                 {
                     "shape": "circular",
@@ -65,7 +65,7 @@ def test_move_to_well_without_optional_params():
     instruments = {"somePipetteId": pipette_mock}
 
     well = labware.Well(
-        well_implementation=WellImplementation(
+        core=WellImplementation(
             well_geometry=WellGeometry(
                 {
                     "shape": "circular",

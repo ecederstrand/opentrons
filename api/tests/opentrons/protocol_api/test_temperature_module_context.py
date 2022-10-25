@@ -8,7 +8,7 @@ from opentrons.protocols.api_support.types import APIVersion
 from opentrons.protocols.api_support.util import APIVersionError
 from opentrons.protocol_api import MAX_SUPPORTED_VERSION, TemperatureModuleContext
 
-from .types import ProtocolCore, TemperatureModuleCore
+from opentrons.protocol_api.core.abstract import ProtocolCore, TemperatureModuleCore
 
 
 @pytest.fixture

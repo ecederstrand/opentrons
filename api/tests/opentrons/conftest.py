@@ -645,12 +645,12 @@ def min_lw2_impl(minimal_labware_def2: LabwareDefinition) -> LabwareImplementati
 
 @pytest.fixture()
 def min_lw(min_lw_impl: LabwareImplementation) -> Labware:
-    return Labware(implementation=min_lw_impl)
+    return Labware(core=min_lw_impl)
 
 
 @pytest.fixture()
 def min_lw2(min_lw2_impl: LabwareImplementation) -> Labware:
-    return Labware(implementation=min_lw2_impl)
+    return Labware(core=min_lw2_impl)
 
 
 @pytest.fixture()

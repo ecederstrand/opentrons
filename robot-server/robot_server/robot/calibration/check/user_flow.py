@@ -349,7 +349,7 @@ class CheckCalibrationUserFlow:
                 version=details.version,
                 parent=position,
             )
-            tiprack_def = tiprack._implementation.get_definition()
+            tiprack_def = tiprack._core.get_definition()
         else:
             tiprack_def = get.get_custom_tiprack_definition_for_tlc(pip_offset.uri)
         return get.load_tip_length_calibration(pipette.pipette_id, tiprack_def)
@@ -666,7 +666,7 @@ class CheckCalibrationUserFlow:
             calibration = modify.mark_bad(
                 self._tip_lengths[active_mount], SourceType.calibration_check
             )
-            tip_definition = self.active_tiprack._implementation.get_definition()
+            tip_definition = self.active_tiprack._core.get_definition()
             tip_length_dict = modify.create_tip_length_data(
                 definition=tip_definition,
                 length=calibration.tip_length,
@@ -827,7 +827,7 @@ class CheckCalibrationUserFlow:
         assert self.active_tiprack
         try:
             return get.load_tip_length_calibration(
-                pip_id, self.active_tiprack._implementation.get_definition()
+                pip_id, self.active_tiprack._core.get_definition()
             ).tip_length
         except TipLengthCalNotFound:
             tip_overlap = self.hw_pipette.config.tip_overlap.get(

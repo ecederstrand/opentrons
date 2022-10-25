@@ -305,7 +305,7 @@ def test_dispense():
 def test_touch_tip():
     location = Location(Point(1, 2, 3), "deck")
     well = labware.Well(
-        well_implementation=WellImplementation(
+        core=WellImplementation(
             well_geometry=WellGeometry(
                 {
                     "shape": "circular",

@@ -1,15 +1,16 @@
 """ProtocolEngine-based InstrumentContext core implementation."""
 from typing import Optional
 
-from opentrons.types import Location, Mount
+from opentrons.types import Mount, Point
 from opentrons.hardware_control.dev_types import PipetteDict
 from opentrons.protocols.api_support.util import Clearances, PlungerSpeeds, FlowRates
 
 from ..instrument import AbstractInstrument
+from .labware import LabwareCore
 from .well import WellCore
 
 
-class InstrumentCore(AbstractInstrument[WellCore]):
+class InstrumentCore(AbstractInstrument[LabwareCore, WellCore]):
     """Instrument API core using a ProtocolEngine.
 
     Args:
@@ -69,7 +70,9 @@ class InstrumentCore(AbstractInstrument[WellCore]):
 
     def move_to(
         self,
-        location: Location,
+        point: Point,
+        well_core: WellCore,
+        labware_core: LabwareCore,
         force_direct: bool,
         minimum_z_height: Optional[float],
         speed: Optional[float],

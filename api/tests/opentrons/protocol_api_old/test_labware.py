@@ -53,7 +53,7 @@ def test_well_init() -> None:
     has_tip = False
     well1 = labware.Well(
         api_level=MAX_SUPPORTED_VERSION,
-        well_implementation=WellImplementation(
+        core=WellImplementation(
             well_geometry=WellGeometry(
                 well_props=test_data[well_name],
                 parent_point=slot.point,
@@ -71,7 +71,7 @@ def test_well_init() -> None:
     well2_name = "rectangular_well_json"
     well2 = labware.Well(
         api_level=MAX_SUPPORTED_VERSION,
-        well_implementation=WellImplementation(
+        core=WellImplementation(
             well_geometry=WellGeometry(
                 well_props=test_data[well2_name],
                 parent_point=slot.point,
@@ -93,7 +93,7 @@ def test_top() -> None:
     has_tip = False
     well = labware.Well(
         api_level=MAX_SUPPORTED_VERSION,
-        well_implementation=WellImplementation(
+        core=WellImplementation(
             well_geometry=WellGeometry(
                 well_props=test_data[well_name],
                 parent_point=slot.point,
@@ -117,7 +117,7 @@ def test_bottom() -> None:
     has_tip = False
     well = labware.Well(
         api_level=MAX_SUPPORTED_VERSION,
-        well_implementation=WellImplementation(
+        core=WellImplementation(
             well_geometry=WellGeometry(
                 well_props=test_data[well_name],
                 parent_point=slot.point,
@@ -141,7 +141,7 @@ def test_from_center_cartesian():
     has_tip = False
     well1 = labware.Well(
         api_level=MAX_SUPPORTED_VERSION,
-        well_implementation=WellImplementation(
+        core=WellImplementation(
             well_geometry=WellGeometry(
                 well_props=test_data[well_name],
                 parent_point=slot1.point,
@@ -174,7 +174,7 @@ def test_from_center_cartesian():
     has_tip = False
     well2 = labware.Well(
         api_level=MAX_SUPPORTED_VERSION,
-        well_implementation=WellImplementation(
+        core=WellImplementation(
             well_geometry=WellGeometry(
                 well_props=test_data[well2_name],
                 parent_point=slot2.point,
@@ -211,7 +211,7 @@ def corning_96_wellplate_360ul_flat_def():
 @pytest.fixture
 def corning_96_wellplate_360ul_flat(corning_96_wellplate_360ul_flat_def):
     return labware.Labware(
-        implementation=LabwareImplementation(
+        core=LabwareImplementation(
             definition=corning_96_wellplate_360ul_flat_def,
             parent=Location(Point(0, 0, 0), "Test Slot"),
         )
@@ -227,7 +227,7 @@ def opentrons_96_tiprack_300ul_def():
 @pytest.fixture
 def opentrons_96_tiprack_300ul(opentrons_96_tiprack_300ul_def):
     return labware.Labware(
-        implementation=LabwareImplementation(
+        core=LabwareImplementation(
             definition=opentrons_96_tiprack_300ul_def,
             parent=Location(Point(0, 0, 0), "Test Slot"),
         )
@@ -287,11 +287,11 @@ def test_well_parent(corning_96_wellplate_360ul_flat) -> None:
     has_tip = True
     well = labware.Well(
         api_level=MAX_SUPPORTED_VERSION,
-        well_implementation=WellImplementation(
+        core=WellImplementation(
             well_geometry=WellGeometry(
                 well_props=test_data[well_name],
                 parent_point=parent.point,
-                parent_object=parent.labware.as_labware()._implementation,
+                parent_object=parent.labware.as_labware()._core,
             ),
             display_name=well_name,
             has_tip=has_tip,
@@ -410,7 +410,7 @@ def test_select_next_tip(
 
     # you can't on api level 2.1 or previous
     early_tr = labware.Labware(
-        implementation=LabwareImplementation(
+        core=LabwareImplementation(
             definition=opentrons_96_tiprack_300ul_def,
             parent=Location(Point(0, 0, 0), "Test Slot"),
         ),
@@ -531,14 +531,10 @@ def test_tiprack_list():
     labware_name = "opentrons_96_tiprack_300ul"
     labware_def = labware.get_labware_definition(labware_name)
     tiprack = labware.Labware(
-        implementation=LabwareImplementation(
-            labware_def, Location(Point(0, 0, 0), "Test Slot")
-        )
+        core=LabwareImplementation(labware_def, Location(Point(0, 0, 0), "Test Slot"))
     )
     tiprack_2 = labware.Labware(
-        implementation=LabwareImplementation(
-            labware_def, Location(Point(0, 0, 0), "Test Slot")
-        )
+        core=LabwareImplementation(labware_def, Location(Point(0, 0, 0), "Test Slot"))
     )
 
     assert labware.select_tiprack_from_list([tiprack], 1) == (tiprack, tiprack["A1"])
@@ -573,27 +569,22 @@ def test_uris():
     )
     assert helpers.uri_from_definition(defn) == uri
     lw = labware.Labware(
-        implementation=LabwareImplementation(
-            defn, Location(Point(0, 0, 0), "Test Slot")
-        )
+        core=LabwareImplementation(defn, Location(Point(0, 0, 0), "Test Slot"))
     )
     assert lw.uri == uri
 
 
-def test_labware_hash_func_same_implementation(minimal_labware_def) -> None:
+def test_labware_hash_func_same_core(minimal_labware_def) -> None:
     """Test that multiple Labware objects with same implementation and version
     have the same __hash__"""
     impl = LabwareImplementation(
         minimal_labware_def, Location(Point(0, 0, 0), "Test Slot")
     )
-    s = set(
-        labware.Labware(implementation=impl, api_level=APIVersion(2, 3))
-        for i in range(10)
-    )
+    s = set(labware.Labware(core=impl, api_level=APIVersion(2, 3)) for i in range(10))
     assert len(s) == 1
 
 
-def test_labware_hash_func_same_implementation_different_version(
+def test_labware_hash_func_same_core_different_version(
     minimal_labware_def,
 ) -> None:
     """Test that multiple Labware objects with same implementation yet
@@ -602,13 +593,13 @@ def test_labware_hash_func_same_implementation_different_version(
         minimal_labware_def, Location(Point(0, 0, 0), "Test Slot")
     )
 
-    l1 = labware.Labware(implementation=impl, api_level=APIVersion(2, 3))
-    l2 = labware.Labware(implementation=impl, api_level=APIVersion(2, 4))
+    l1 = labware.Labware(core=impl, api_level=APIVersion(2, 3))
+    l2 = labware.Labware(core=impl, api_level=APIVersion(2, 4))
 
     assert len({l1, l2}) == 2
 
 
-def test_labware_hash_func_diff_implementation_same_version(
+def test_labware_hash_func_diff_core_same_version(
     minimal_labware_def,
 ) -> None:
     """Test that multiple Labware objects with different implementation yet
@@ -620,8 +611,8 @@ def test_labware_hash_func_diff_implementation_same_version(
         minimal_labware_def, Location(Point(0, 0, 0), "Test Slot2")
     )
 
-    l1 = labware.Labware(implementation=impl1, api_level=APIVersion(2, 3))
-    l2 = labware.Labware(implementation=impl2, api_level=APIVersion(2, 3))
+    l1 = labware.Labware(core=impl1, api_level=APIVersion(2, 3))
+    l2 = labware.Labware(core=impl2, api_level=APIVersion(2, 3))
 
     assert len({l1, l2}) == 2
 
@@ -629,11 +620,11 @@ def test_labware_hash_func_diff_implementation_same_version(
 def test_set_offset(decoy: Decoy) -> None:
     """It should set the labware's offset using the implementation."""
     labware_impl = decoy.mock(cls=AbstractLabware)
-    subject = labware.Labware(implementation=labware_impl)
+    subject = labware.Labware(core=labware_impl)
 
     subject.set_offset(x=1.1, y=2.2, z=3.3)
     decoy.verify(labware_impl.set_calibration(Point(1.1, 2.2, 3.3)))
 
-    subject = labware.Labware(implementation=labware_impl, api_level=APIVersion(2, 11))
+    subject = labware.Labware(core=labware_impl, api_level=APIVersion(2, 11))
     with pytest.raises(APIVersionError):
         subject.set_offset(x=4.4, y=5.5, z=6.6)

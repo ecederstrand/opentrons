@@ -265,11 +265,9 @@ class ThermocyclerGeometry(ModuleGeometry):
         )
 
         # Block first three columns from being accessed
-        definition = labware._implementation.get_definition()
+        definition = labware._core.get_definition()
         definition["ordering"] = definition["ordering"][2::]
-        return Labware(
-            implementation=LabwareImplementation(definition, super().location),
-        )
+        return Labware(core=LabwareImplementation(definition, super().location))
 
     def add_labware(self, labware: Labware) -> Labware:
         assert not self._labware, "{} is already on this module".format(self._labware)

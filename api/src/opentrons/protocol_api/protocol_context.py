@@ -31,17 +31,15 @@ from opentrons.protocols.geometry.module_geometry import ModuleGeometry
 from opentrons.protocols.geometry.deck import Deck
 from opentrons.protocols.api_support.definitions import MAX_SUPPORTED_VERSION
 
-from .core.instrument import AbstractInstrument
+from .core.abstract import ProtocolCore, ModuleCore
 from .core.labware import AbstractLabware
 from .core.module import (
-    AbstractModuleCore,
     AbstractTemperatureModuleCore,
     AbstractMagneticModuleCore,
     AbstractThermocyclerCore,
     AbstractHeaterShakerCore,
 )
-from .core.protocol import AbstractProtocol
-from .core.well import AbstractWellCore
+
 
 from . import validation
 from .instrument_context import InstrumentContext
@@ -63,12 +61,6 @@ ModuleTypes = Union[
     ThermocyclerContext,
     HeaterShakerContext,
 ]
-
-
-InstrumentCore = AbstractInstrument[AbstractWellCore]
-LabwareCore = AbstractLabware[AbstractWellCore]
-ModuleCore = AbstractModuleCore[LabwareCore]
-ProtocolCore = AbstractProtocol[InstrumentCore, LabwareCore, ModuleCore]
 
 
 class HardwareManager(NamedTuple):
@@ -316,7 +308,7 @@ class ProtocolContext(CommandPublisher):
 
         # TODO(mc, 2022-09-02): add API version
         # https://opentrons.atlassian.net/browse/RSS-97
-        return Labware(implementation=labware_core)
+        return Labware(core=labware_core)
 
     @requires_version(2, 0)
     def load_labware_by_name(
@@ -358,7 +350,7 @@ class ProtocolContext(CommandPublisher):
         def _only_labwares() -> Iterator[Tuple[int, Labware]]:
             for slotnum, slotitem in self._implementation.get_deck().items():
                 if isinstance(slotitem, AbstractLabware):
-                    yield slotnum, Labware(implementation=slotitem)
+                    yield slotnum, Labware(core=slotitem)
                 elif isinstance(slotitem, Labware):
                     yield slotnum, slotitem
                 elif isinstance(slotitem, ModuleGeometry):
@@ -507,12 +499,13 @@ class ProtocolContext(CommandPublisher):
         )
 
         instrument = InstrumentContext(
-            ctx=self,
+            core=instrument_core,
+            protocol_core=self._implementation,
+            api_version=self._api_version,
             broker=self._broker,
-            implementation=instrument_core,
-            at_version=self._api_version,
             # TODO(mc, 2022-08-25): test instrument tip racks
-            tip_racks=tip_racks,
+            tip_racks=tip_racks or [],
+            trash=self.fixed_trash,
         )
 
         self._instruments[checked_mount] = instrument
@@ -654,7 +647,7 @@ class ProtocolContext(CommandPublisher):
         # TODO AL 20201113 - remove this when DeckLayout only holds
         #  LabwareInterface instances.
         if isinstance(trash, AbstractLabware):
-            return Labware(implementation=trash)
+            return Labware(core=trash)
         return cast("Labware", trash)
 
     @requires_version(2, 5)

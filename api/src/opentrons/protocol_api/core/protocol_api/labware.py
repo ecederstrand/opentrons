@@ -6,7 +6,7 @@ from opentrons.protocols.geometry.well_geometry import WellGeometry
 from opentrons.protocols.api_support.tip_tracker import TipTracker
 
 from opentrons.protocols.api_support.well_grid import WellGrid
-from opentrons.types import Point, Location
+from opentrons.types import Point, Location, DeckSlotName
 from opentrons_shared_data.labware.dev_types import LabwareParameters, LabwareDefinition
 
 from ..labware import AbstractLabware, LabwareLoadParams
@@ -149,6 +149,12 @@ class LabwareImplementation(AbstractLabware[WellImplementation]):
     @property
     def load_name(self) -> str:
         return self._parameters["loadName"]
+
+    def get_slot(self) -> DeckSlotName:
+        return DeckSlotName(self._geometry.parent.labware.first_parent())
+
+    def get_center_multichannel_on_wells(self) -> bool:
+        return "centerMultichannelOnWells" in self.get_quirks()
 
     # TODO(mc, 2022-09-26): codify "from labware's base" in defintion schema
     # https://opentrons.atlassian.net/browse/RSS-110

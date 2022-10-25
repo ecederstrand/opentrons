@@ -66,10 +66,15 @@ class LegacyModuleCore(AbstractModuleCore[LabwareImplementation]):
         self._requested_model = requested_model
         self._geometry = geometry
         self._protocol_core = protocol_core
+        self._labware_core: Optional[LabwareImplementation] = None
 
     @property
     def geometry(self) -> ModuleGeometry:
         return self._geometry
+
+    @property
+    def labware_core(self) -> Optional[LabwareImplementation]:
+        return self._labware_core
 
     def get_model(self) -> ModuleModel:
         """Get the module's model identifier."""
@@ -100,6 +105,7 @@ class LegacyModuleCore(AbstractModuleCore[LabwareImplementation]):
         # TODO (mc, 2022-10-25): RSS-105 and RSS-106. Refactor so we do not return Labware from the method.
         labware = self.geometry.add_labware(Labware(implementation=labware_core))
         self._protocol_core.get_deck().recalculate_high_z()
+        self._labware_core = labware_core
         return labware
 
 
@@ -182,22 +188,20 @@ class LegacyMagneticModuleCore(
         Raises:
             ValueError: Labware is not loaded or has no default engage height.
         """
-        labware = self._geometry.labware
+        labware_core = self._labware_core
 
-        if labware is None:
+        if labware_core is None:
             raise ValueError(
                 "No labware loaded in Magnetic Module;"
                 " you must specify an engage height explicitly"
                 " using `height_from_base` or `height`"
             )
 
-        engage_height = labware._implementation.get_default_magnet_engage_height(
-            preserve_half_mm
-        )
+        engage_height = labware_core.get_default_magnet_engage_height(preserve_half_mm)
 
         if engage_height is None:
             raise ValueError(
-                f"Currently loaded labware {labware} does not have"
+                f"Currently loaded labware {labware_core.load_name} does not have"
                 " a default engage height; specify engage height explicitly"
                 " using `height_from_base` or `height`"
             )
@@ -371,7 +375,7 @@ class LegacyThermocyclerCore(
         trash = self._protocol_core.get_fixed_trash()
 
         if isinstance(trash, LabwareImplementation):
-            trash = Labware(implementation=trash)
+            trash = Labware(core=trash)
 
         return cast(Labware, trash)
 
@@ -398,10 +402,16 @@ class LegacyThermocyclerCore(
                 z=high_point[Axis.by_mount(instr_core.get_mount())]
             )
             instr_core.move_to(
-                Location(safe_point, None),
+                point=safe_point,
+                well_core=None,
+                labware_core=None,
                 force_direct=True,
                 minimum_z_height=None,
                 speed=None,
+            )
+            self._protocol_core.set_last_location(
+                location=Location(safe_point, labware=None),
+                mount=instr_core.get_mount(),
             )
 
 
