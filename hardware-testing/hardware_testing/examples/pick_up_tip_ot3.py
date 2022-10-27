@@ -5,7 +5,7 @@ import asyncio
 from hardware_testing.opentrons_api import types
 from hardware_testing.opentrons_api import helpers_ot3
 
-TIP_POS = types.Point(x=100, y=100, z=100)
+TIP_POS = types.Point(x=100, y=100, z=200)
 
 
 async def _main(is_simulating: bool) -> None:
@@ -19,11 +19,12 @@ async def _main(is_simulating: bool) -> None:
     await helpers_ot3.move_to_arched_ot3(api, mount, TIP_POS)
     # overwrite the default current/distance
     await helpers_ot3.update_pick_up_current(api, mount, current=0.25)
-    await helpers_ot3.update_pick_up_distance(api, mount, distance=0.25)
+    await helpers_ot3.update_pick_up_distance(api, mount, distance=10)
+    await helpers_ot3.update_pick_up_speed(api, mount, speed=1)
     # pickup the tip
     await api.pick_up_tip(mount, tip_length=40)
     # drop the tip (in place)
-    await api.drop_tip(mount)
+    await api.drop_tip(mount, home_after=False)
     # disengage XY axes when done
     await api.disengage_axes([types.OT3Axis.X, types.OT3Axis.Y])
 

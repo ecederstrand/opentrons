@@ -279,6 +279,14 @@ async def update_pick_up_distance(
     pipette._config = replace(pipette.config, pick_up_distance=distance)
 
 
+async def update_pick_up_speed(
+    api: OT3API, mount: OT3Mount, speed: Optional[float] = 5.0
+) -> None:
+    """Update pick-up-tip speed."""
+    pipette = _get_pipette_from_mount(api, mount)
+    pipette._config = replace(pipette.config, pick_up_speed=speed)
+
+
 async def move_plunger_absolute_ot3(
     api: OT3API,
     mount: OT3Mount,
