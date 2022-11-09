@@ -32,6 +32,7 @@ from .ot3utils import (
     create_gripper_jaw_grip_group,
     create_gripper_jaw_home_group,
     create_gripper_jaw_hold_group,
+    verify_home_responses,
 )
 
 try:
@@ -333,9 +334,7 @@ class OT3Controller:
                 self._position.update({p[0]: p[1][0]})
                 self._encoder_position.update({p[0]: p[1][1]})
         expected_nodes = [axis_to_node(ax) for ax in checked_axes]
-        missing_nodes = [en for en in expected_nodes if en not in responded_nodes]
-        if missing_nodes:
-            raise RuntimeError(f"no response from nodes after homing: {missing_nodes}")
+        verify_home_responses(expected_nodes, responded_nodes)
         return axis_convert(self._position, 0.0)
 
     def _filter_move_group(self, move_group: MoveGroup) -> MoveGroup:
@@ -391,11 +390,12 @@ class OT3Controller:
         move_group = create_gripper_jaw_home_group()
         runner = MoveGroupRunner(move_groups=[move_group])
         positions = await runner.run(can_messenger=self._messenger)
-        if NodeId.gripper_g not in list(positions.keys()):
-            raise RuntimeError("no response from gripper jaw after homing")
+        responded_nodes = []
         for axis, point in positions.items():
             self._position.update({axis: point[0]})
             self._encoder_position.update({axis: point[1]})
+            responded_nodes.append(axis)
+        verify_home_responses([NodeId.gripper_g], responded_nodes)
 
     @staticmethod
     def _synthesize_model_name(name: FirmwarePipetteName, model: str) -> "PipetteModel":

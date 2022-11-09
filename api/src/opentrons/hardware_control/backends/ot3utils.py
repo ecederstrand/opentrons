@@ -297,3 +297,9 @@ _sensor_node_lookup: Dict[OT3Mount, ProbeTarget] = {
 
 def sensor_node_for_mount(mount: OT3Mount) -> ProbeTarget:
     return _sensor_node_lookup[mount]
+
+
+def verify_home_responses(expected: List[NodeId], found: List[NodeId]) -> None:
+    missing = [en for en in expected if en not in found]
+    if missing:
+        raise RuntimeError(f"missing nodes in response: {missing}")
