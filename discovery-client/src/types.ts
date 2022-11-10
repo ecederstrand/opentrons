@@ -26,6 +26,7 @@ export type Capability =
   | 'buildrootMigration'
   | 'buildrootUpdate'
   | 'restart'
+  | 'systemUpdate'
 
 export type CapabilityMap = {
   [C in Capability]: string | null | undefined
