@@ -12,34 +12,32 @@ from hardware_testing.opentrons_api import helpers_ot3
 SLOT_SIZE = types.Point(x=128, y=-86, z=0)
 LABWARE_SIZE_ARMADILLO = types.Point(x=127.8, y=-85.55, z=16)
 LABWARE_SIZE_EVT_TIPRACK = types.Point(x=127.6, y=-85.8, z=93)
-MAG_PLATE_SIZE = types.Point(x=128, y=-86.0, z=39.5)
-
-# offset created by placing labware on the magnetic plate
-ARMADILLO_HEIGHT_ON_MAG_PLATE = 45.3
-ARMADILLO_OFFSET_ON_MAG_PLATE = types.Point(
-    z=ARMADILLO_HEIGHT_ON_MAG_PLATE - LABWARE_SIZE_ARMADILLO.z
-)
 
 TRAVEL_HEIGHT = 30
 
-ForcedOffsets = List[Tuple[types.Point, types.Point]]
-TEST_OFFSETS: ForcedOffsets = [
-    (types.Point(x=0, y=0, z=0), types.Point(x=0, y=0, z=0)),
-]
-
 ARMADILLO_GRIP_POINT = LABWARE_SIZE_ARMADILLO * 0.5
 ARMADILLO_GRIP_POINT += types.Point(z=LABWARE_SIZE_ARMADILLO.z * 0.5)
+
 LABWARE_SIZE = {"plate": LABWARE_SIZE_ARMADILLO, "tiprack": LABWARE_SIZE_EVT_TIPRACK}
+# TODO: figure out good grip heights
+# NOTE: ME expects either center of center-bottom are best
 LABWARE_GRIP_HEIGHT = {
-    "plate": LABWARE_SIZE_ARMADILLO.z,
+    "plate": LABWARE_SIZE_ARMADILLO.z * 0.5,
     "tiprack": LABWARE_SIZE_EVT_TIPRACK.z * 0.5,
 }
-
-LABWARE_GRIP_FORCE = {"plate": 5, "tiprack": 10}
+# TODO: figure out good grip forces
+# NOTE: keep in mind spring force of clips when grip/ungrip at deck-slots
+LABWARE_GRIP_FORCE = {"plate": 15, "tiprack": 15}
 
 DEFAULT_PRESS_DOWN_Z = 2
 
 LABWARE_WARP = types.Point()
+
+ForcedOffsets = List[Tuple[types.Point, types.Point]]
+TEST_OFFSETS: ForcedOffsets = [
+    # forced GRIP offset ,       forced UNGRIP offset
+    (types.Point(x=0, y=0, z=0), types.Point(x=0, y=0, z=0)),
+]
 
 # TODO: changes for DVT
 #       - weaker clips
@@ -199,7 +197,10 @@ async def _main(
                     api, labware_key, force, src, dst, inspect=inspect, warp=warp
                 )
             else:
-                for _s_offset, _d_offset in offsets:
+                total_offsets = len(offsets)
+                for n, _s_d_offsets in enumerate(offsets):
+                    _s_offset, _d_offset = _s_d_offsets
+                    print(f"Testing offsets {n + 1}/{total_offsets}")
                     await _slot_to_slot(
                         api,
                         labware_key,
@@ -211,6 +212,7 @@ async def _main(
                         inspect=inspect,
                         warp=warp,
                     )
+                    input("Done testing offset, press ENTER to continue to next offset: ")
 
     while True:
         await _inspect(api)
