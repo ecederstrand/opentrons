@@ -511,9 +511,9 @@ async def move_to_arched_ot3(
 ) -> None:
     """Move OT3 gantry in an arched path."""
     z_ax = OT3Axis.by_mount(mount)
-    max_z = get_endstop_position_ot3(api, mount)[z_ax] - 1
+    max_z = get_endstop_position_ot3(api, mount)[z_ax] - 0.5
     here = await api.gantry_position(mount=mount, refresh=True)
-    arch_z = min(max(here.z, safe_height), max_z)
+    arch_z = min(max(here.z, safe_height, abs_position.z), max_z)
     points = [
         here._replace(z=arch_z),
         abs_position._replace(z=arch_z),
