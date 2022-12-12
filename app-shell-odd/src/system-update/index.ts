@@ -36,6 +36,7 @@ export function registerRobotSystemUpdate(dispatch: Dispatch): Dispatch {
         if (!checkingForUpdates) {
           checkingForUpdates = true
           // eslint-disable-next-line @typescript-eslint/no-floating-promises
+          console.log('checking for update!')
           checkForSystemUpdate(dispatch).then(
             () => (checkingForUpdates = false)
           )
@@ -54,6 +55,7 @@ export function registerRobotSystemUpdate(dispatch: Dispatch): Dispatch {
         }
 
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        console.log('updating system file!')
         uploadSystemFile(host, path, file)
           .then(() => ({
             type: 'buildroot:FILE_UPLOAD_DONE' as const,
@@ -100,6 +102,7 @@ export function registerRobotSystemUpdate(dispatch: Dispatch): Dispatch {
 
 export function getSystemUpdateUrls(): Promise<ReleaseSetUrls | null> {
   const manifestUrl: string = getConfig('robotSystemUpdate').manifestUrls.OT3
+  console.log('manifestUrl', manifestUrl)
 
   return downloadManifest(manifestUrl, MANIFEST_CACHE)
     .then(manifest => {
@@ -133,6 +136,7 @@ export function getSystemUpdateUrls(): Promise<ReleaseSetUrls | null> {
 //   5. Dispatch info or error to UI
 export function checkForSystemUpdate(dispatch: Dispatch): Promise<unknown> {
   const fileDownloadDir = path.join(DIRECTORY, getLatestVersion())
+  console.log('fileDownloadDir', fileDownloadDir)
 
   return ensureDir(fileDownloadDir)
     .then(getSystemUpdateUrls)
