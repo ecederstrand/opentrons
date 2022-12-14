@@ -15,22 +15,25 @@ async def _main(is_simulating: bool, mount: types.OT3Mount, tip_length: int = 40
     home_pos = await api.gantry_position(mount)
     tip_pos = home_pos._replace(z=120)
     while True:
-        inp = input("\"p\"=pick-up-tip, \"r\"=return-tip, \"j\"=j, \"n\"=new-tip-pos, \"s\"=stop")
-        if inp == "p":
-            await helpers_ot3.move_to_arched_ot3(api, mount, tip_pos, safe_height=150)
-            await api.pick_up_tip(mount, tip_length=tip_length)
-        elif inp == "r":
-            await helpers_ot3.move_to_arched_ot3(api, mount, tip_pos, safe_height=150)
-            await api.drop_tip(mount, home_after=False)
-        elif inp == "j":
-            await helpers_ot3.jog_mount_ot3(api, mount)
-        elif inp == "n":
-            tip_pos = await api.gantry_position(mount)
-            print(f"found tip position: {tip_pos}")
-        elif inp == "s":
-            break
-        else:
-            continue
+        try:
+            inp = input("\"p\"=pick-up-tip, \"r\"=return-tip, \"j\"=jog, \"n\"=new-tip-pos, \"s\"=stop")
+            if inp == "p":
+                await helpers_ot3.move_to_arched_ot3(api, mount, tip_pos, safe_height=150)
+                await api.pick_up_tip(mount, tip_length=tip_length)
+            elif inp == "r":
+                await helpers_ot3.move_to_arched_ot3(api, mount, tip_pos, safe_height=150)
+                await api.drop_tip(mount, home_after=False)
+            elif inp == "j":
+                await helpers_ot3.jog_mount_ot3(api, mount)
+            elif inp == "n":
+                tip_pos = await api.gantry_position(mount)
+                print(f"found tip position: {tip_pos}")
+            elif inp == "s":
+                break
+            else:
+                continue
+        except Exception as e:
+            print(e)
     # move close to home position
     await helpers_ot3.move_to_arched_ot3(api, mount, home_pos - types.Point(x=-2, y=-2, z=-2))
 
