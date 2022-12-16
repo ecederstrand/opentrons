@@ -197,7 +197,11 @@ export const PipetteWizardFlows = (
   } else if (currentStep.section === SECTIONS.RESULTS) {
     const handleProceed = (): void => {
       if (
-        currentStepIndex === 2 &&
+        flowType === FLOWS.ATTACH &&
+        //  currentStepIndexes to indicate different areas of flows that run into the Results
+        (currentStepIndex === 2 ||
+          currentStepIndex === 6 ||
+          currentStepIndex === 4) &&
         //  only proceeds if we know that the pipette was successfully attached
         attachedPipette[mount] != null
       ) {

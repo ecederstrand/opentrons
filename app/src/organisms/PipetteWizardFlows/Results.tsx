@@ -1,6 +1,9 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { NINETY_SIX_CHANNEL } from '@opentrons/shared-data'
+import {
+  NINETY_SIX_CHANNEL,
+  SINGLE_MOUNT_PIPETTES,
+} from '@opentrons/shared-data'
 import { COLORS, TEXT_TRANSFORM_CAPITALIZE } from '@opentrons/components'
 import { PrimaryButton } from '../../atoms/buttons'
 import { SimpleWizardBody } from '../../molecules/SimpleWizardBody'
@@ -30,6 +33,11 @@ export const Results = (props: ResultsProps): JSX.Element => {
     selectedPipette === NINETY_SIX_CHANNEL &&
     currentStepIndex === 2 &&
     !isGantryEmpty
+  const is96ChannelAttachFlowPostCal =
+    selectedPipette === NINETY_SIX_CHANNEL &&
+    (currentStepIndex === 7 || currentStepIndex === 9)
+  const isSinlgeMountAttachFlowPostCal =
+    selectedPipette === SINGLE_MOUNT_PIPETTES && currentStepIndex === 5
 
   let header: string = 'unknown results screen'
   let iconColor: string = COLORS.successEnabled
@@ -58,13 +66,14 @@ export const Results = (props: ResultsProps): JSX.Element => {
       ) {
         header = t('pipette_detached')
         buttonText = t('continue')
-        // normal attachment flow success
       } else if (attachedPipette[mount] != null) {
         const pipetteName = attachedPipette[mount]?.modelSpecs.displayName
-        header = t('pipette_attached', { pipetteName: pipetteName })
-        if (selectedPipette === NINETY_SIX_CHANNEL) {
-          buttonText = t('shared:exit')
+        //  attach flow followed by calibrate success
+        if (is96ChannelAttachFlowPostCal || isSinlgeMountAttachFlowPostCal) {
+          header = t('pip_cal_success')
+          // normal attachment flow success
         } else {
+          header = t('pipette_attached', { pipetteName: pipetteName })
           buttonText = t('cal_pipette')
         }
         // normal detachment flow fail
